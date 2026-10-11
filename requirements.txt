@@ -1,7 +1,6 @@
-fastapi==0.143.0
-matplotlib==3.11.2
-numpy==2.5.4
-Pillow==12.3.0
-scikit_learn==1.9.1
-torch==2.14.1
-torchvision==0.29.1
+fastapi
+Pillow
+matplotlib
+numpy
+uvicorn[standard]
+python-multipart
