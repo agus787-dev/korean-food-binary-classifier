@@ -1,5 +1,17 @@
-# Python virtual environments
+# Data 
+data/
+dataset/
+
+
+# Virtual environment
 myenv/
-venv/
-.venv/
-env/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
