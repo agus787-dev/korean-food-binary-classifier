@@ -1,19 +1,25 @@
 """FastAPI service for the Korean food classifier.
 
 Run from the project root:
-    uvicorn api:app --app-dir src --reload --port 8000
+    uvicorn app.main:app --reload --port 8000
 
 Then open http://localhost:8000/docs to test it in the browser.
 """
 import io
 import os
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, UnidentifiedImageError
 
-from predict import Predictor
+# predict.py, model.py and utils.py live in src/, so make that folder importable
+SRC_DIR = Path(__file__).resolve().parent.parent / "src"
+sys.path.append(str(SRC_DIR))
+
+from predict import Predictor  # noqa: E402 (must come after the sys.path change)
 
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB, same limit as the frontend
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}

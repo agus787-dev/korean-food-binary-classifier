@@ -19,8 +19,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Code and trained model. Keep the same folder layout as the project:
 # src/ and outputs/models/ (utils.py builds paths relative to the project root)
 COPY --chown=user src/ src/
+COPY --chown=user app/ app/
 COPY --chown=user outputs/models/ outputs/models/
 
 # Hugging Face expects the app on port 7860
 EXPOSE 7860
-CMD ["uvicorn", "api:app", "--app-dir", "src", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]

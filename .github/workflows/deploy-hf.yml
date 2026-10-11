@@ -6,6 +6,7 @@ on:
     # Redeploy only when something related to the API changes
     paths:
       - "src/**"
+      - "app/**"
       - "outputs/models/**"
       - "Dockerfile"
       - "requirements.txt"
@@ -24,6 +25,7 @@ jobs:
         run: |
           mkdir -p space/outputs
           cp -r src space/src
+          cp -r app space/app
           cp -r outputs/models space/outputs/models
           cp Dockerfile requirements.txt space/
           cp deploy/HF_README.md space/README.md
