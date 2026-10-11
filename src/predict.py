@@ -1,95 +1,76 @@
-import argparse
+"""Load the trained CNN and predict the class of one image.
+"""
+import json
+import sys
 from pathlib import Path
 
-import cv2
 import torch
 from PIL import Image
-from torchvision import transforms
 
 from model import SimpleCNN
-from utils import IMAGE_SIZE, MEAN, MODELS_DIR, PREDICTIONS_DIR, STD, TEST_DIR, get_device, load_json
+from preprocessing_data import get_eval_transforms
+from utils import MODELS_DIR, get_device
+
+MODEL_PATH = MODELS_DIR / "best_cnn_model.pth"
+CLASS_NAMES_PATH = MODELS_DIR / "class_names.json"
 
 
-def build_prediction_transform():
-    """Use the same resize and normalization as validation/test data."""
-    return transforms.Compose([
-        transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=MEAN, std=STD),
-    ])
+class Predictor:
+    """Loads the model once and can then predict many images quickly."""
+
+    def __init__(self, model_path: Path = MODEL_PATH, class_names_path: Path = CLASS_NAMES_PATH):
+        self.device = get_device()
+
+        # class_names.json was saved by train.py, e.g. ["bibimbap", "fried_rice"]
+        with open(class_names_path, encoding="utf-8") as f:
+            self.class_names = json.load(f)
+
+        self.model = SimpleCNN(num_classes=len(self.class_names)).to(self.device)
+        self.model.load_state_dict(torch.load(model_path, map_location=self.device))
+        self.model.eval()  # inference mode
+
+        # Must be the same transforms as validation/test during training
+        self.transform = get_eval_transforms()
+
+    @torch.no_grad()
+    def predict(self, image: Image.Image) -> dict:
+        """Predict one PIL image. Returns class name, confidence and all probabilities."""
+        # Force 3 channels: PNG with alpha or grayscale images would break the model input
+        image = image.convert("RGB")
+
+        # [3, H, W] -> [1, 3, H, W]: the model expects a batch dimension
+        x = self.transform(image).unsqueeze(0).to(self.device)
+
+        logits = self.model(x)
+        probs = torch.softmax(logits, dim=1)[0]  # [num_classes], sums to 1
+
+        best_idx = int(torch.argmax(probs))
+        return {
+            "predicted_class": self.class_names[best_idx],
+            "confidence": float(probs[best_idx]),
+            "probabilities": {
+                name: float(p) for name, p in zip(self.class_names, probs)
+            },
+        }
 
 
-def predict_single_image(image_path: Path):
-    device = get_device()
-    class_names = load_json(MODELS_DIR / "class_names.json")
+def main() -> None:
+    if len(sys.argv) != 2:
+        print("Usage: python src/predict.py path/to/image.jpg")
+        sys.exit(1)
 
-    model = SimpleCNN(num_classes=len(class_names)).to(device)
-    model.load_state_dict(torch.load(MODELS_DIR / "best_cnn_model.pth", map_location=device))
-    model.eval()
+    image_path = Path(sys.argv[1])
+    if not image_path.exists():
+        print(f"File not found: {image_path}")
+        sys.exit(1)
 
-    bgr_image = cv2.imread(str(image_path))
-    if bgr_image is None:
-        raise FileNotFoundError(f"Could not read image: {image_path}")
+    predictor = Predictor()
+    result = predictor.predict(Image.open(image_path))
 
-    rgb_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
-    pil_image = Image.fromarray(rgb_image)
-
-    transform = build_prediction_transform()
-    image_tensor = transform(pil_image).unsqueeze(0).to(device)
-    # Shape becomes [1, 3, 128, 128] because we add a batch dimension.
-
-    with torch.no_grad():
-        outputs = model(image_tensor)
-        probabilities = torch.softmax(outputs, dim=1)
-        confidence, predicted_index = torch.max(probabilities, dim=1)
-
-    predicted_class = class_names[predicted_index.item()]
-    confidence_value = confidence.item()
-
-    print(f"Predicted class: {predicted_class}")
-    print(f"Confidence: {confidence_value:.4f}")
-
-    output_image = bgr_image.copy()
-    label_text = f"{predicted_class} ({confidence_value:.2f})"
-    cv2.putText(
-        output_image,
-        label_text,
-        (10, 30),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
-        (0, 255, 0),
-        2,
-        cv2.LINE_AA,
-    )
-    PREDICTIONS_DIR.mkdir(parents=True, exist_ok=True)
-    save_path = PREDICTIONS_DIR / f"prediction_{image_path.stem}.jpg"
-    cv2.imwrite(str(save_path), output_image)
-    print("Saved prediction image to:", save_path)
-
-
-def get_default_test_image():
-    """Pick the first available image from the test folder for quick demos."""
-    image_paths = sorted(TEST_DIR.glob("*/*.*"))
-    if not image_paths:
-        raise FileNotFoundError(
-            f"No test images found in {TEST_DIR}. Run download_data.py and prepare_data.py first."
-        )
-    return image_paths[2]
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Predict one image using the trained CNN.")
-    parser.add_argument(
-        "--image_path",
-        type=str,
-        default=None,
-        help="Optional path to an image file for prediction.",
-    )
-    args = parser.parse_args()
-
-    image_path = Path(args.image_path) if args.image_path else get_default_test_image()
-    print("Using image:", image_path)
-    predict_single_image(image_path)
+    print(f"Image: {image_path}")
+    print(f"Prediction: {result['predicted_class']} ({result['confidence']:.1%})")
+    for name, p in result["probabilities"].items():
+        print(f"  {name:11s} {p:.4f}")
 
 
 if __name__ == "__main__":

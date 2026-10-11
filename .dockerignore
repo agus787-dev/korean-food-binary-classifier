@@ -1,0 +1,16 @@
+# Data and virtual environment (large, not needed to serve the model)
+data/
+dataset/
+myenv/
+
+# Training outputs that are not needed by the API
+outputs/plots/
+
+# Notebooks, frontend, git, caches
+notebooks/
+.git/
+.gitignore
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store

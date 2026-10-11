@@ -1,0 +1,46 @@
+name: Deploy to Hugging Face Space
+
+on:
+  push:
+    branches: [main]
+    # Redeploy only when something related to the API changes
+    paths:
+      - "src/**"
+      - "outputs/models/**"
+      - "Dockerfile"
+      - "requirements.txt"
+      - "deploy/**"
+  workflow_dispatch: # manual "Run workflow" button in the Actions tab
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true # download real model files if they are stored in Git LFS
+
+      - name: Prepare Space files
+        run: |
+          mkdir -p space/outputs
+          cp -r src space/src
+          cp -r outputs/models space/outputs/models
+          cp Dockerfile requirements.txt space/
+          cp deploy/HF_README.md space/README.md
+          find space -name "__pycache__" -type d -prune -exec rm -rf {} +
+
+      - name: Push to Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_USERNAME: agus-dev
+          HF_SPACE: korean-food-classifier
+        run: |
+          cd space
+          git init -b main
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git lfs install
+          git lfs track "*.pth"
+          git add .
+          git commit -m "Deploy from GitHub: ${{ github.sha }}"
+          git push --force "https://${HF_USERNAME}:${HF_TOKEN}@huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE}" main
