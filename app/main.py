@@ -8,10 +8,12 @@ Then open http://localhost:8000/docs to test it in the browser.
 import io
 import os
 import sys
+import secrets
+
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, UnidentifiedImageError
 
@@ -30,12 +32,21 @@ ALLOWED_ORIGINS = os.getenv(
 ).split(",")
 
 
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Runs once when the server starts: load the model into memory
     app.state.predictor = Predictor()
     yield
 
+def verify_api_key(x_api_key: str | None = Header(default=None)) -> None:
+    """Allow only requests that send the correct X-API-Key header."""
+    if not INTERNAL_API_KEY:
+        return  # key not configured: open mode, for local development only
+    if x_api_key is None or not secrets.compare_digest(x_api_key, INTERNAL_API_KEY):
+        raise HTTPException(status_code=401, detail="Invalid API key")
 
 app = FastAPI(title="Korean Food Classifier API", lifespan=lifespan)
 
@@ -56,7 +67,7 @@ def health():
 
 # A normal "def" (not "async def"): model inference is heavy work,
 # so FastAPI runs it in a thread pool and the server stays responsive.
-@app.post("/predict")
+@app.post("/predict", dependencies=[Depends(verify_api_key)])
 def predict_endpoint(file: UploadFile = File(...)):
     """Receive an image and return the predicted class with probabilities."""
     if file.content_type not in ALLOWED_TYPES:
